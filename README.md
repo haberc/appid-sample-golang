@@ -1,0 +1,1 @@
+# appid-sample-golang
