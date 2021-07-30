@@ -183,6 +183,26 @@ func home(w http.ResponseWriter, r *http.Request) {
 
 }
 
+func token(w http.ResponseWriter, r *http.Request) {
+
+	log.Println("Executing /token")
+
+	if r.Context().Value("err") != nil {
+		w.WriteHeader(http.StatusUnauthorized)
+		w.Write([]byte("No SESSION_COOKIE"))
+	} else {
+
+		authToken := oauth2.Token{
+			AccessToken: r.Context().Value("authToken").(string),
+		}
+
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("AccessToken: " + fmt.Sprintln(authToken.AccessToken)))
+		w.Write([]byte("TokenType: " + fmt.Sprintln(authToken.TokenType)))
+	}
+
+}
+
 // Login handler for /login
 func login(w http.ResponseWriter, r *http.Request) {
 
@@ -308,6 +328,8 @@ func main() {
 	http.Handle("/static/", http.StripPrefix("/static/", fs))
 
 	http.Handle("/home", middleware(http.HandlerFunc(home)))
+
+	http.Handle("/token", middleware(http.HandlerFunc(token)))
 
 	http.HandleFunc("/login", login)
 
