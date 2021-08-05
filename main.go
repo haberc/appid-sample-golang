@@ -13,6 +13,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/MicahParks/keyfunc"
+	jwt "github.com/golang-jwt/jwt"
+
 	"github.com/tkanos/gonfig"
 	"golang.org/x/net/context"
 	"golang.org/x/oauth2"
@@ -195,10 +198,40 @@ func token(w http.ResponseWriter, r *http.Request) {
 		authToken := oauth2.Token{
 			AccessToken: r.Context().Value("authToken").(string),
 		}
+		log.Println("AccessToken:", string(authToken.AccessToken))
 
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("AccessToken: " + fmt.Sprintln(authToken.AccessToken)))
-		w.Write([]byte("TokenType: " + fmt.Sprintln(authToken.TokenType)))
+		// Get the JWKS URL.
+		jwksURL := "https://eu-de.appid.cloud.ibm.com/oauth/v4/a9dd4d8f-e549-44df-bf24-2db57afa026f/publickeys"
+		// Create the JWKS from the resource at the given URL.
+		jwks, err := keyfunc.Get(jwksURL)
+		if err != nil {
+			log.Fatalf("Failed to create JWKS from resource at the given URL.\nError: %s", err.Error())
+		}
+
+		token, err := jwt.Parse(authToken.AccessToken, jwks.KeyFunc)
+		if err != nil {
+			log.Fatalf("Failed to parse token.\nError: %s", err.Error())
+		}
+
+		if claims, ok := token.Claims.(jwt.MapClaims); ok && token.Valid {
+			// ctx := context.WithValue(r.Context(), "props", claims)
+			// Access context values in handlers like this
+			// props, _ := r.Context().Value("props").(jwt.MapClaims)
+
+			// next.ServeHTTP(w, r.WithContext(ctx))
+
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte("AccessToken: " + fmt.Sprintln(authToken.AccessToken)))
+			w.Write([]byte("TokenType: " + fmt.Sprintln(authToken.TokenType)))
+			w.Write([]byte("Claims: " + fmt.Sprintln(claims)))
+
+		} else {
+			fmt.Println(err)
+			w.WriteHeader(http.StatusUnauthorized)
+			w.Write([]byte("Unauthorized\n"))
+			w.Write([]byte("Token valid: " + fmt.Sprintln(token.Valid)))
+		}
+
 	}
 
 }
