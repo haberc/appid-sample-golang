@@ -191,41 +191,16 @@ func token(w http.ResponseWriter, r *http.Request) {
 	log.Println("Executing /token")
 
 	if r.Context().Value("err") != nil {
+
 		w.WriteHeader(http.StatusUnauthorized)
-		w.Write([]byte("No SESSION_COOKIE"))
+		w.Write([]byte("Error: " + r.Context().Value("err").(error).Error()))
+
 	} else {
 
-		// Get the JWKS URL.
-		jwksURL := strings.TrimSuffix(conf.Endpoint.AuthURL, "/authorization") + "/publickeys"
-		// Create the JWKS from the resource at the given URL.
-		jwks, err := keyfunc.Get(jwksURL)
-		if err != nil {
-			log.Fatalf("Failed to create JWKS from resource at the given URL.\nError: %s", err.Error())
-		}
-
-		token, err := jwt.Parse(r.Context().Value("authToken").(string), jwks.KeyFunc)
-		if err != nil {
-			log.Fatalf("Failed to parse token.\nError: %s", err.Error())
-		}
-
-		if claims, ok := token.Claims.(jwt.MapClaims); ok && token.Valid {
-			// ctx := context.WithValue(r.Context(), "props", claims)
-			// Access context values in handlers like this
-			// props, _ := r.Context().Value("props").(jwt.MapClaims)
-
-			// next.ServeHTTP(w, r.WithContext(ctx))
-
-			w.WriteHeader(http.StatusOK)
-			// w.Write([]byte("AccessToken: " + fmt.Sprintln(authToken.AccessToken)))
-			// w.Write([]byte("TokenType: " + fmt.Sprintln(authToken.TokenType)))
-			w.Write([]byte("Claims: " + fmt.Sprintln(claims)))
-
-		} else {
-			fmt.Println(err)
-			w.WriteHeader(http.StatusUnauthorized)
-			w.Write([]byte("Unauthorized\n"))
-			w.Write([]byte("Token valid: " + fmt.Sprintln(token.Valid)))
-		}
+		w.WriteHeader(http.StatusOK)
+		// w.Write([]byte("AccessToken: " + fmt.Sprintln(authToken.AccessToken)))
+		props, _ := r.Context().Value("props").(jwt.MapClaims)
+		w.Write([]byte("Claims: " + fmt.Sprintln(props)))
 
 	}
 
@@ -308,11 +283,10 @@ func middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		//Do stuff
 
-		// Getting cookie named SESSION_TOKEN
-		cookie, err := r.Cookie(SESSION_TOKEN)
-
 		ctx := r.Context()
 
+		// Getting cookie named SESSION_TOKEN
+		cookie, err := r.Cookie(SESSION_TOKEN)
 		if err != nil {
 
 			// If no cookie found, that's ok, that means no user is logged in
@@ -327,6 +301,28 @@ func middleware(next http.Handler) http.Handler {
 			// Let's get the auth token value
 			ctx = context.WithValue(ctx, "authToken", cookie.Value)
 
+			// Let's examine the token
+			// Get the JWKS URL.
+			jwksURL := strings.TrimSuffix(conf.Endpoint.AuthURL, "/authorization") + "/publickeys"
+			// Create the JWKS from the resource at the given URL.
+			jwks, err := keyfunc.Get(jwksURL)
+			if err != nil {
+				log.Fatalf("Failed to create JWKS from resource at the given URL.\nError: %s", err.Error())
+			}
+
+			token, err := jwt.Parse(cookie.Value, jwks.KeyFunc)
+			if err != nil {
+				log.Fatalf("Failed to parse token.\nError: %s", err.Error())
+			}
+
+			if claims, ok := token.Claims.(jwt.MapClaims); ok && token.Valid {
+				ctx = context.WithValue(ctx, "props", claims)
+				// Access context values in handlers like this
+				// props, _ := r.Context().Value("props").(jwt.MapClaims)
+			} else {
+				err = errors.New("Unauthorized")
+				ctx = context.WithValue(ctx, "err", err)
+			}
 		}
 
 		next.ServeHTTP(w, r.WithContext(ctx))
