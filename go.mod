@@ -1,4 +1,4 @@
-module appid-sample-golang/m/v2
+module github.com/haberc/appid-sample-golang
 
 go 1.15
 
