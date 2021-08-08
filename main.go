@@ -198,9 +198,38 @@ func token(w http.ResponseWriter, r *http.Request) {
 	} else {
 
 		w.WriteHeader(http.StatusOK)
-		// w.Write([]byte("AccessToken: " + fmt.Sprintln(authToken.AccessToken)))
-		props, _ := r.Context().Value("props").(jwt.MapClaims)
-		w.Write([]byte("Claims: " + fmt.Sprintln(props)))
+		token := r.Context().Value("authToken").(string)
+		w.Write([]byte("AccessToken: " + fmt.Sprintln(token)))
+		claims, _ := r.Context().Value("props").(jwt.MapClaims)
+		w.Write([]byte("Claims: " + fmt.Sprintln(claims)))
+
+	}
+
+}
+
+func admin(w http.ResponseWriter, r *http.Request) {
+
+	log.Println("Executing /admin")
+
+	if r.Context().Value("err") != nil {
+
+		w.WriteHeader(http.StatusUnauthorized)
+		w.Write([]byte("Error: " + r.Context().Value("err").(error).Error()))
+
+	} else {
+
+		claims, _ := r.Context().Value("props").(jwt.MapClaims)
+
+		scope := claims["scope"]
+
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("Scope: " + fmt.Sprintln(scope)))
+
+		if strings.Contains(scope.(string), "admin") {
+			w.Write([]byte("Welcome Admin!"))
+		} else {
+			w.Write([]byte("You are not an Admin!"))
+		}
 
 	}
 
@@ -353,6 +382,8 @@ func main() {
 	http.Handle("/home", middleware(http.HandlerFunc(home)))
 
 	http.Handle("/token", middleware(http.HandlerFunc(token)))
+
+	http.Handle("/admin", middleware(http.HandlerFunc(admin)))
 
 	http.HandleFunc("/login", login)
 
