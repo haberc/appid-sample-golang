@@ -5,8 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"html/template"
+	"io/ioutil"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"path"
 	"runtime"
@@ -78,7 +80,7 @@ func loadConfigurationFile() (AppIdConfiguration, error) {
 	_, filename, _, ok := runtime.Caller(0)
 
 	if !ok {
-		return app_id_configuration, errors.New("Error calling runtime caller.")
+		return app_id_configuration, errors.New("error calling runtime caller")
 	}
 
 	// Reading configuration file
@@ -99,17 +101,17 @@ func GetOauthToken(r *http.Request) (*oauth2.Token, error) {
 	ctx := context.Background()
 
 	if ctx == nil {
-		return nil, errors.New("Could not get context.")
+		return nil, errors.New("could not get context")
 	}
 
 	if r.URL.Query().Get(STATE) != STATE {
-		return nil, errors.New("State value did not match.")
+		return nil, errors.New("state value did not match")
 	}
 
 	// Exchange code for OAuth token
 	oauth2Token, oauth2TokenError := conf.Exchange(ctx, r.URL.Query().Get("code"))
 	if oauth2TokenError != nil {
-		return nil, errors.New("Failed to exchange token:" + oauth2TokenError.Error())
+		return nil, errors.New("failed to exchange token:" + oauth2TokenError.Error())
 	}
 
 	return oauth2Token, nil
@@ -123,7 +125,7 @@ func GetUserProfile(r *http.Request, token oauth2.Token) (interface{}, error) {
 	ctx := context.Background()
 
 	if ctx == nil {
-		return nil, errors.New("Could not get context.")
+		return nil, errors.New("could not get context")
 	}
 
 	// Getting now the userInfo
@@ -147,10 +149,10 @@ func GetUserProfile(r *http.Request, token oauth2.Token) (interface{}, error) {
 
 }
 
-// Home handler for /home
+// handler for /home
 func home(w http.ResponseWriter, r *http.Request) {
 
-	log.Println("Executing /home")
+	log.Println("Executing home")
 
 	// Parsing home.html template
 	tmpl, _ := template.ParseFiles("./static/home.html")
@@ -183,6 +185,75 @@ func home(w http.ResponseWriter, r *http.Request) {
 	}
 
 	tmpl.ExecuteTemplate(w, "home", data)
+
+}
+
+// handler for /campsite/add
+func addCampsite(w http.ResponseWriter, r *http.Request) {
+
+	log.Println("Executing addCampsite")
+
+	if r.Method != "POST" {
+
+		// Parsing home.html template
+		tmpl, err := template.ParseFiles("./static/addCampsite.html")
+		if err != nil {
+			log.Println(err)
+		}
+		data := &Home{}
+
+		// Adding title to page
+		data.Title = "Campsite Add Dialog"
+
+		if r.Context().Value("err") == nil {
+
+			log.Println("Session cookie found.")
+
+			authToken := oauth2.Token{
+				AccessToken: r.Context().Value("authToken").(string),
+			}
+
+			// Getting the user profile for the given auth token
+			profile, profileError := GetUserProfile(r, authToken)
+
+			if profileError != nil {
+				log.Print("Error getting profile.")
+			}
+
+			// Setting values in page template, this is what we are going to show for the logged in user
+			data.User.Token = fmt.Sprintln(authToken.AccessToken)
+			data.User.Profile = fmt.Sprintln(profile)
+
+			log.Println("User already logged in:" + fmt.Sprintln(profile))
+
+		}
+
+		log.Println(tmpl.ExecuteTemplate(w, "addCampsite", data))
+
+	} else {
+
+		log.Println("Country: " + r.FormValue("country"))
+
+		params := url.Values{}
+		params.Add("name", r.FormValue("name"))
+		params.Add("country", r.FormValue("country"))
+		params.Add("city", r.FormValue("city"))
+		params.Add("zip", r.FormValue("zip"))
+
+		resp, err := http.PostForm("http://api-1a.cacueckjsi6.svc.cluster.local:8000/campsite", params)
+		// resp, err := http.PostForm("http://127.0.0.1:8000/campsite", params)
+
+		if err != nil {
+			log.Printf("Request Failed: %s", err)
+			return
+		}
+
+		defer resp.Body.Close()
+		body, _ := ioutil.ReadAll(resp.Body) // Log the request body
+		bodyString := string(body)
+		log.Print(bodyString)
+
+	}
 
 }
 
@@ -380,6 +451,8 @@ func main() {
 	http.Handle("/static/", http.StripPrefix("/static/", fs))
 
 	http.Handle("/home", middleware(http.HandlerFunc(home)))
+
+	http.Handle("/campsite/add", middleware(http.HandlerFunc(addCampsite)))
 
 	http.Handle("/token", middleware(http.HandlerFunc(token)))
 
