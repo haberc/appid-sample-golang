@@ -1,0 +1,55 @@
+{{ define "addCampsite" }}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link type="text/css" href="css/style.css" rel="stylesheet" />
+    <title>{{.Title}}</title>
+
+    <style>
+        body {
+            background-image: url(/static/images/bg.png);
+            background-repeat: no-repeat;
+            background-position: center;
+            background-attachment: fixed;
+            padding-top: 80px;
+        }
+        .textStyle {
+            color: white;
+            text-align: center;
+        }
+        .spin {
+            display: inline-block;
+            width: 100%;
+            text-align:center;
+        }
+    </style>
+</head>
+<body class="container textStyle col-sm-6 col-sm-offset-3">
+<div id="imgDiv">
+    <img class="center-block" id="logo" alt="logo"
+         style="height: 140px; width: 140px; object-fit: contain;margin-top: 40px" src="/static/images/logo_cloud_land.png">
+</div>
+
+{{if .User.Token}}
+    <h1>Add Campsite</h1>
+    <form action="/campsite/add" method="POST">
+        <label>Country:</label><br />
+        <input type="text" name="country"><br />
+        <label>Name:</label><br />
+        <input type="text" name="name"><br />
+        <label>City:</label><br />
+        <input type="text" name="city"><br />
+        <label>ZIP:</label><br />
+        <input type="text" name="zip"><br />
+        <input type="submit">
+    </form>
+{{else}}
+<a href="/login" class="center-block" style="color:white">Login</a>
+{{end}}
+</div>
+
+</body>
+</html>
+{{ end }}
