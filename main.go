@@ -240,7 +240,7 @@ func addCampsite(w http.ResponseWriter, r *http.Request) {
 		params.Add("city", r.FormValue("city"))
 		params.Add("zip", r.FormValue("zip"))
 
-		resp, err := http.PostForm("http://api-1a.cacueckjsi6.svc.cluster.local:8000/campsite", params)
+		resp, err := http.PostForm("http://api-1a.cacueckjsi6.svc.cluster.local/campsite", params)
 		// resp, err := http.PostForm("http://127.0.0.1:8000/campsite", params)
 
 		if err != nil {
