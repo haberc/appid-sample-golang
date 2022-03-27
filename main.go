@@ -23,9 +23,7 @@ import (
 	"golang.org/x/oauth2"
 )
 
-var conf oauth2.Config
-
-const APP_ID_CONFIG = "/config/appid_config.json"
+const APP_ID_CONFIG = "/config/config.json"
 const OPEN_ID_SCOPE = "openid"
 const PROFILE_SCOPE = "profile"
 const STATE = "state"
@@ -49,28 +47,14 @@ type AppIdConfiguration struct {
 	ClientSecret string
 	AuthURL      string
 	RedirectUrl  string
+	ApiUrl       string
+	oauth2Conf   *oauth2.Config
 }
 
-// Builds a configuration object, with a given appidConfiguration struct
-func buildConfigurationObject(app_id_configuration AppIdConfiguration) oauth2.Config {
-
-	log.Println("Building configuration file.")
-
-	conf := &oauth2.Config{
-		ClientID:     app_id_configuration.ClientId,
-		ClientSecret: app_id_configuration.ClientSecret,
-		RedirectURL:  app_id_configuration.RedirectUrl,
-		Scopes:       []string{OPEN_ID_SCOPE, PROFILE_SCOPE},
-		Endpoint: oauth2.Endpoint{
-			AuthURL:  app_id_configuration.AuthURL + "/authorization",
-			TokenURL: app_id_configuration.AuthURL + "/token",
-		},
-	}
-	return *conf
-}
+var conf *AppIdConfiguration
 
 // Loads a configuration file, found in /config/appid_config.json
-func loadConfigurationFile() (AppIdConfiguration, error) {
+func loadConfigurationFile() (*AppIdConfiguration, error) {
 
 	log.Println("Loading configuration file.")
 
@@ -80,17 +64,30 @@ func loadConfigurationFile() (AppIdConfiguration, error) {
 	_, filename, _, ok := runtime.Caller(0)
 
 	if !ok {
-		return app_id_configuration, errors.New("error calling runtime caller")
+		return &app_id_configuration, errors.New("error calling runtime caller")
 	}
 
 	// Reading configuration file
 	app_id_configuration_error := gonfig.GetConf(path.Dir(filename)+string(os.PathSeparator)+APP_ID_CONFIG, &app_id_configuration)
 
 	if app_id_configuration_error != nil {
-		return app_id_configuration, app_id_configuration_error
+		return &app_id_configuration, app_id_configuration_error
 	}
 
-	return app_id_configuration, nil
+	log.Println("Building oauth2.config.")
+
+	app_id_configuration.oauth2Conf = &oauth2.Config{
+		ClientID:     app_id_configuration.ClientId,
+		ClientSecret: app_id_configuration.ClientSecret,
+		RedirectURL:  app_id_configuration.RedirectUrl,
+		Scopes:       []string{OPEN_ID_SCOPE, PROFILE_SCOPE},
+		Endpoint: oauth2.Endpoint{
+			AuthURL:  app_id_configuration.AuthURL + "/authorization",
+			TokenURL: app_id_configuration.AuthURL + "/token",
+		},
+	}
+
+	return &app_id_configuration, nil
 }
 
 // Requests an OAuthToken using a "code" type
@@ -109,7 +106,7 @@ func GetOauthToken(r *http.Request) (*oauth2.Token, error) {
 	}
 
 	// Exchange code for OAuth token
-	oauth2Token, oauth2TokenError := conf.Exchange(ctx, r.URL.Query().Get("code"))
+	oauth2Token, oauth2TokenError := conf.oauth2Conf.Exchange(ctx, r.URL.Query().Get("code"))
 	if oauth2TokenError != nil {
 		return nil, errors.New("failed to exchange token:" + oauth2TokenError.Error())
 	}
@@ -129,10 +126,10 @@ func GetUserProfile(r *http.Request, token oauth2.Token) (interface{}, error) {
 	}
 
 	// Getting now the userInfo
-	client := conf.Client(ctx, &token)
+	client := conf.oauth2Conf.Client(ctx, &token)
 
 	// Get request using /userinfo url
-	userinfoResponse, userinfoError := client.Get(strings.Replace(conf.Endpoint.AuthURL, "/authorization", "/userinfo", 1))
+	userinfoResponse, userinfoError := client.Get(strings.Replace(conf.oauth2Conf.Endpoint.AuthURL, "/authorization", "/userinfo", 1))
 	if userinfoError != nil {
 		return nil, errors.New("Failed to obtain userinfo:" + userinfoError.Error())
 	}
@@ -240,7 +237,8 @@ func addCampsite(w http.ResponseWriter, r *http.Request) {
 		params.Add("city", r.FormValue("city"))
 		params.Add("zip", r.FormValue("zip"))
 
-		resp, err := http.PostForm("http://api-1a.cacueckjsi6.svc.cluster.local/campsite", params)
+		resp, err := http.PostForm(conf.ApiUrl, params)
+		// resp, err := http.PostForm("http://api-1a.cacueckjsi6.svc.cluster.local/campsite", params)
 		// resp, err := http.PostForm("http://127.0.0.1:8000/campsite", params)
 
 		if err != nil {
@@ -312,7 +310,7 @@ func login(w http.ResponseWriter, r *http.Request) {
 	log.Println("Executing /login")
 
 	// Code request to Auth URL
-	http.Redirect(w, r, conf.AuthCodeURL(STATE), http.StatusFound)
+	http.Redirect(w, r, conf.oauth2Conf.AuthCodeURL(STATE), http.StatusFound)
 
 }
 
@@ -403,7 +401,7 @@ func middleware(next http.Handler) http.Handler {
 
 			// Let's examine the token
 			// Get the JWKS URL.
-			jwksURL := strings.TrimSuffix(conf.Endpoint.AuthURL, "/authorization") + "/publickeys"
+			jwksURL := strings.TrimSuffix(conf.oauth2Conf.Endpoint.AuthURL, "/authorization") + "/publickeys"
 			// Create the JWKS from the resource at the given URL.
 			jwks, err := keyfunc.Get(jwksURL)
 			if err != nil {
@@ -435,13 +433,11 @@ func main() {
 	log.Println("Starting appid execution.")
 
 	// Loading App Id configuration file
-	app_id_configuration, app_id_configuration_error := loadConfigurationFile()
+	var app_id_configuration_error error
+	conf, app_id_configuration_error = loadConfigurationFile()
 	if app_id_configuration_error != nil {
 		log.Println("Could not load configuration file.")
 	}
-
-	// Building global conf object, using App Id configuration
-	conf = buildConfigurationObject(app_id_configuration)
 
 	// Serving static files
 	fs := http.FileServer(http.Dir("static"))
